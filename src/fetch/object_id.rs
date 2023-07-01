@@ -8,13 +8,13 @@ use std::{
     cell::OnceCell,
     fmt::{Debug, Display, Formatter},
     marker::PhantomData,
-    str::FromStr,
+    str::FromStr, time::Duration,
 };
 use url::Url;
 
 impl<T> FromStr for ObjectId<T>
 where
-    T: Object + Send + 'static,
+    T: Object + Send + Debug + 'static,
     for<'de2> <T as Object>::Kind: Deserialize<'de2>,
 {
     type Err = url::ParseError;
@@ -80,27 +80,31 @@ where
     where
         <Kind as Object>::Error: From<Error> + From<anyhow::Error>,
     {
-        let cache = Self::CACHE;
-        let cache = cache.get_or_init(|| {
-            Cache::builder()
-                .max_capacity(Kind::cache_max_capacity())
-                .time_to_live(Kind::cache_time_to_live())
-                .build()
-        });
-        // The get_with method ensures that the dereference_inner method is only called once even if the dereference method is called twice simultaneously.
-        // From the docs: "This method guarantees that concurrent calls on the same not-existing key are coalesced into one evaluation of the init future. Only one of the calls evaluates its future, and other calls wait for that future to resolve."
+        if Kind::cache_max_capacity() == 0 || Kind::cache_time_to_live().is_zero() {
+            self.dereference_uncached(data).await
+        } else {
+            let cache = Self::CACHE;
+            let cache = cache.get_or_init(|| {
+                Cache::builder()
+                    .max_capacity(Kind::cache_max_capacity())
+                    .time_to_live(Kind::cache_time_to_live())
+                    .build()
+            });
+            // The get_with method ensures that the dereference_inner method is only called once even if the dereference method is called twice simultaneously.
+            // From the docs: "This method guarantees that concurrent calls on the same not-existing key are coalesced into one evaluation of the init future. Only one of the calls evaluates its future, and other calls wait for that future to resolve."
 
-        // Considerations: should an error result be stored in the cache as well? Right now: yes. Otherwise try_get_with should be used.
-        cache
-            .get_with(*self.0.clone(), async {
-                self.dereference_uncached(data).await
-            })
-            .await
+            // Considerations: should an error result be stored in the cache as well? Right now: yes. Otherwise try_get_with should be used.
+            cache
+                .get_with(*self.0.clone(), async {
+                    self.dereference_uncached(data).await
+                })
+                .await
+        }
     }
 }
 impl<Kind> ObjectId<Kind>
 where
-    Kind: Object + Send + 'static,
+    Kind: Object + Send + Debug + 'static,
     for<'de2> <Kind as Object>::Kind: serde::Deserialize<'de2>,
 {
     /// Construct a new objectid instance
@@ -131,7 +135,6 @@ where
         <Kind as Object>::Error: From<Error> + From<anyhow::Error>,
     {
         let db_object = self.dereference_from_db(data).await?;
-
         // if its a local object, only fetch it from the database and not over http
         if data.config.is_local_url(&self.0) {
             return match db_object {
