@@ -93,7 +93,7 @@ use url::Url;
 ///
 /// }
 #[async_trait]
-pub trait Object: Sized + Debug {
+pub trait Object: Sized + std::fmt::Debug {
     /// App data type passed to handlers. Must be identical to
     /// [crate::config::FederationConfigBuilder::app_data] type.
     type DataType: Clone + Send + Sync;
@@ -104,11 +104,11 @@ pub trait Object: Sized + Debug {
 
     /// Defines how many of this type of object should be cached
     fn cache_max_capacity() -> u64 {
-        1000
+        0
     }
     /// Defines how long objects of this type should live in the in-memory cache
     fn cache_time_to_live() -> Duration {
-        Duration::from_secs(10)
+        Duration::from_secs(600)
     }
 
     /// Returns the last time this object was updated.

@@ -189,7 +189,7 @@ impl<T: Clone> FederationConfig<T> {
     /// If wait_retries is true, also wait for requests that have initially failed and are being retried
     ///
     /// Currently, this method does not work correctly if worker_count = 0 (unlimited)
-    pub async fn shutdown(mut self, wait_retries: bool) -> anyhow::Result<()> {
+    pub async fn shutdown(mut self, wait_retries: bool) -> anyhow::Result<Option<impl std::fmt::Debug>> {
         if let Some(q) = self.activity_queue.take() {
             let stats = Arc::<ActivityQueue>::into_inner(q)
                 .context(
@@ -197,9 +197,9 @@ impl<T: Clone> FederationConfig<T> {
                 )?
                 .shutdown(wait_retries)
                 .await?;
-            tracing::info!("{:?}", stats);
+            return Ok(Some(stats));
         }
-        Ok(())
+        Ok(None)
     }
 }
 
